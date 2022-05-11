@@ -56,7 +56,7 @@ loop:
 
 func print(results <-chan Result) {
 	for r := range results {
-		fmt.Printf("%05d (%v): %d factors to:\n", r.Id, r.Time, r.Number)
+		fmt.Printf("%05d (%v): %d factors to primes:\n", r.Id, r.Time, r.Number)
 		for _, f := range r.Factors {
 			fmt.Printf("\t%d\n", f)
 		}
