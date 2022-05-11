@@ -67,7 +67,7 @@ func Manage(timeout time.Duration, shift int) {
 	var wg sync.WaitGroup
 
 	size := runtime.GOMAXPROCS(0)
-	requests := make(chan Request, size)
+	requests := make(chan Request)
 	results := make(chan Result)
 	workers := make(chan bool, size)
 
