@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math/rand"
 	"os"
 	"strconv"
 	"time"
@@ -18,5 +19,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	rand.Seed(time.Hour.Nanoseconds())
 	worker.Manage(time.Millisecond*time.Duration(milliseconds), int(shift))
 }
