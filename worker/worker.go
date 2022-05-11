@@ -16,6 +16,7 @@ type Request struct {
 
 type Result struct {
 	Id      uint
+	Time    time.Duration
 	Number  uint64
 	Factors []uint64
 }
@@ -30,7 +31,9 @@ func factors(n uint64) []uint64 {
 }
 
 func do(workers <-chan bool, wg *sync.WaitGroup, r Request, results chan<- Result) {
-	results <- Result{r.Id, r.Number, factors(r.Number)}
+	start := time.Now()
+	factors := factors(r.Number)
+	results <- Result{r.Id, time.Since(start), r.Number, factors}
 	<-workers
 	wg.Done()
 }
@@ -53,7 +56,7 @@ loop:
 
 func print(results <-chan Result) {
 	for r := range results {
-		fmt.Printf("%05d: %d factors to:\n", r.Id, r.Number)
+		fmt.Printf("%05d (%v): %d factors to:\n", r.Id, r.Time, r.Number)
 		for _, f := range r.Factors {
 			fmt.Printf("\t%d\n", f)
 		}
