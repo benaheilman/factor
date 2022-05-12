@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -9,11 +10,11 @@ import (
 )
 
 func TestDo(t *testing.T) {
-	workers := make(chan bool, 1)
+	workers := make(chan struct{}, 1)
 	results := make(chan Result)
 	var wg sync.WaitGroup
 	wg.Add(1)
-	workers <- true
+	workers <- struct{}{}
 	go do(workers, &wg, Request{Id: 0, Number: 2}, results)
 	<-results
 	wg.Wait()
@@ -21,12 +22,22 @@ func TestDo(t *testing.T) {
 }
 
 func TestGen(t *testing.T) {
-	c := make(chan Request, 10)
-	go gen(c, 1, time.Second)
+	var wg sync.WaitGroup
+
+	c := make(chan Request)
+	cxt := context.TODO()
+	cxt, cancel := context.WithCancel(cxt)
+
+	wg.Add(1)
+	go gen(cxt, &wg, c, 1)
 	for i := 0; i < 100; i++ {
 		<-c
 	}
-	assert.True(t, true)
+	cancel()
+	wg.Wait()
+	_, ok := <-c
+	assert.False(t, ok)
+	assert.Equal(t, "context canceled", cxt.Err().Error())
 }
 
 func TestManage(t *testing.T) {
