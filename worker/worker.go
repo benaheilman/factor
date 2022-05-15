@@ -1,10 +1,14 @@
 package worker
 
 import (
+	"bufio"
 	"context"
+	"encoding/binary"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -30,6 +34,53 @@ func factors(n uint64) []uint64 {
 		}
 	}
 	return []uint64{n}
+}
+
+func primes(wg *sync.WaitGroup, ch chan<- uint64, until uint64) {
+	defer wg.Done()
+	defer close(ch)
+
+	for i := uint64(2); i < until; i++ {
+		if len(factors(i)) <= 1 {
+			ch <- i
+		}
+	}
+}
+
+func record(wg *sync.WaitGroup, ch <-chan uint64, path string) {
+	defer wg.Done()
+
+	f, err := os.Create(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	w := bufio.NewWriter(f)
+	for {
+		next, ok := <-ch
+		if !ok {
+			return
+		}
+		buf := make([]byte, 8)
+		binary.PutUvarint(buf, next)
+		nn, err := w.Write(buf)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if nn != 8 {
+			log.Fatalf("wrote %d bytes instead of 8", nn)
+		}
+	}
+}
+
+func Generate(path string, limit int) {
+	wg := sync.WaitGroup{}
+	ch := make(chan uint64)
+	wg.Add(1)
+	go record(&wg, ch, path)
+	wg.Add(1)
+	go primes(&wg, ch, 1<<limit)
+	wg.Wait()
 }
 
 func do(workers <-chan struct{}, wg *sync.WaitGroup, r Request, results chan<- Result) {

@@ -2,12 +2,26 @@ package worker
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func BenchmarkFactor(b *testing.B) {
+	rand.Seed(19597341926366851)
+	for k := 16; k < 32; k++ {
+		name := fmt.Sprintf("%d-bitshift", k)
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = factors(rand.Uint64() >> k)
+			}
+		})
+	}
+}
 
 func TestDo(t *testing.T) {
 	workers := make(chan struct{}, 1)
