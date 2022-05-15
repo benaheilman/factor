@@ -23,7 +23,8 @@ type Result struct {
 }
 
 func factors(n uint64) []uint64 {
-	for i := uint64(2); i <= uint64(math.Sqrt(float64(n))); i++ {
+	sqrt := uint64(math.Sqrt(float64(n)))
+	for i := uint64(2); i <= sqrt; i++ {
 		if n%i == 0 {
 			return append([]uint64{i}, factors(n/i)...)
 		}
