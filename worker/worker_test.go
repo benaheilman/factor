@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -12,14 +13,21 @@ import (
 )
 
 func BenchmarkFactor(b *testing.B) {
-	rand.Seed(19597341926366851)
-	for k := 16; k < 32; k++ {
-		name := fmt.Sprintf("%d-bitshift", k)
-		b.Run(name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = factors(rand.Uint64() >> k)
-			}
-		})
+	for _, method := range []string{"naive", "disk"} {
+		for _, k := range []int{8, 16, 24, 32} {
+			name := fmt.Sprintf("%s-%d-bitshift", method, k)
+			b.Run(name, func(b *testing.B) {
+				rand.Seed(19597341926366851)
+				for i := 0; i < b.N; i++ {
+					switch method {
+					case "naive":
+						_ = factorsNaive(rand.Uint64() >> k)
+					case "disk":
+						_ = factorsDisk(rand.Uint64()>>k, filepath.Join("..", "primes.bin"))
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -29,7 +37,7 @@ func TestDo(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	workers <- struct{}{}
-	go do(workers, &wg, Request{Id: 0, Number: 2}, results)
+	go do(workers, &wg, Request{Id: 0, Number: 2}, results, filepath.Join("..", "primes.bin"))
 	<-results
 	wg.Wait()
 	assert.True(t, true)
@@ -55,5 +63,5 @@ func TestGen(t *testing.T) {
 }
 
 func TestManage(t *testing.T) {
-	Manage(time.Second, 10)
+	Manage(time.Second, 10, "naive")
 }

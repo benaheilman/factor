@@ -17,12 +17,7 @@ import (
 var generateCmd = &cobra.Command{
 	Use:   "generate",
 	Short: "Generate a binary file of primes",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Long:  `Output of this command is used by the disk factoring method`,
 	Run: func(cmd *cobra.Command, args []string) {
 		path, err := cmd.Flags().GetString("output")
 		if err != nil {
@@ -32,7 +27,7 @@ to quickly create a Cobra application.`,
 		if err != nil {
 			log.Fatal(err)
 		}
-		cpu, err := cmd.Flags().GetString("cpu-profiler")
+		cpu, err := cmd.Parent().Flags().GetString("cpu-profiler")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -64,5 +59,4 @@ func init() {
 	// generateCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	generateCmd.Flags().StringP("output", "o", "primes.bin", "Output binary file")
 	generateCmd.Flags().Int8P("limit", "l", 16, "Limit construction to limit bits")
-	generateCmd.Flags().StringP("cpu-profiler", "c", "cpu.pprof", "CPU profiler output")
 }

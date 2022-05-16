@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"math/rand"
@@ -26,14 +27,105 @@ type Result struct {
 	Factors []uint64
 }
 
-func factors(n uint64) []uint64 {
+type primeReader struct {
+	File        *os.File
+	ObjectSize  int
+	BlockSize   int
+	Cache       []byte
+	CacheOffset int
+}
+
+func newPrimeReader(path string, blockSize int) io.Reader {
+	file, err := os.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cache := make([]byte, blockSize)
+	n, err := file.Read(cache)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if n != blockSize {
+		log.Fatalf("Only got %d bytes at head of primes file, expected %d", n, blockSize)
+	}
+	return &primeReader{File: file, ObjectSize: 8, BlockSize: blockSize, Cache: cache, CacheOffset: 0}
+}
+
+func (pr *primeReader) Read(p []byte) (n int, err error) {
+	if pr.CacheOffset >= pr.BlockSize {
+		n, err := pr.File.Read(pr.Cache)
+		switch err {
+		case io.EOF:
+			pr.File.Close()
+			return 0, io.EOF
+		case nil:
+			break
+		default:
+			return n, err
+		}
+		if n != pr.BlockSize {
+			pr.BlockSize = n
+		}
+		pr.CacheOffset = 0
+	}
+	n = copy(p, pr.Cache[pr.CacheOffset:])
+	pr.CacheOffset = pr.CacheOffset + n*pr.ObjectSize
+	return n, nil
+}
+
+func factorsNaive(n uint64) []uint64 {
 	sqrt := uint64(math.Sqrt(float64(n)))
 	for i := uint64(2); i <= sqrt; i++ {
 		if n%i == 0 {
-			return append([]uint64{i}, factors(n/i)...)
+			return append([]uint64{i}, factorsNaive(n/i)...)
 		}
 	}
 	return []uint64{n}
+}
+
+func factorsDisk(n uint64, path string) []uint64 {
+	r := newPrimeReader(path, 1024*1024)
+	var prime uint64 = 0
+	sqrt := uint64(math.Sqrt(float64(n)))
+	buf := make([]byte, 8)
+	for {
+		i, err := r.Read(buf)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		if i != 8 {
+			log.Fatalf("got %d bytes instead of the expected 8", i)
+		}
+		prime, i = binary.Uvarint(buf)
+		if i <= 0 {
+			log.Fatalf("decoded %d bytes instead of the expected 8", i)
+		}
+		if prime > sqrt {
+			return []uint64{n}
+		}
+		if n%prime == 0 {
+			return append([]uint64{prime}, factorsDisk(n/prime, path)...)
+		}
+	}
+	for i := prime; i <= sqrt; i++ {
+		if n%i == 0 {
+			return append([]uint64{i}, factorsDisk(n/i, path)...)
+		}
+	}
+	return []uint64{n}
+}
+
+func isPrime(n uint64) bool {
+	sqrt := uint64(math.Sqrt(float64(n)))
+	for i := uint64(2); i <= sqrt; i++ {
+		if n%i == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func primes(wg *sync.WaitGroup, ch chan<- uint64, until uint64) {
@@ -41,7 +133,10 @@ func primes(wg *sync.WaitGroup, ch chan<- uint64, until uint64) {
 	defer close(ch)
 
 	for i := uint64(2); i < until; i++ {
-		if len(factors(i)) <= 1 {
+		if i%(1<<16) == 0 {
+			log.Println(i)
+		}
+		if isPrime(i) {
 			ch <- i
 		}
 	}
@@ -83,12 +178,19 @@ func Generate(path string, limit int) {
 	wg.Wait()
 }
 
-func do(workers <-chan struct{}, wg *sync.WaitGroup, r Request, results chan<- Result) {
+func do(workers <-chan struct{}, wg *sync.WaitGroup, r Request, results chan<- Result, method string) {
+	defer wg.Done()
+
+	factors := []uint64{}
 	start := time.Now()
-	factors := factors(r.Number)
+	switch method {
+	case "naive":
+		factors = factorsNaive(r.Number)
+	case "disk":
+		factors = factorsDisk(r.Number, "primes.bin")
+	}
 	results <- Result{r.Id, time.Since(start), r.Number, factors}
 	<-workers
-	wg.Done()
 }
 
 func gen(cxt context.Context, wg *sync.WaitGroup, c chan<- Request, shift int) {
@@ -115,7 +217,7 @@ func print(results <-chan Result) {
 	}
 }
 
-func Manage(timeout time.Duration, shift int) {
+func Manage(timeout time.Duration, shift int, method string) {
 	var wg sync.WaitGroup
 
 	size := runtime.GOMAXPROCS(0)
@@ -135,7 +237,7 @@ func Manage(timeout time.Duration, shift int) {
 		// Block until slots become available
 		workers <- struct{}{}
 		wg.Add(1)
-		go do(workers, &wg, r, results)
+		go do(workers, &wg, r, results, method)
 	}
 	wg.Wait()
 	close(results)
