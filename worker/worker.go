@@ -150,6 +150,7 @@ func record(wg *sync.WaitGroup, ch <-chan uint64, path string) {
 		log.Fatal(err)
 	}
 	defer f.Close()
+
 	w := bufio.NewWriter(f)
 	for {
 		next, ok := <-ch
@@ -181,19 +182,24 @@ func Generate(path string, limit int) {
 func do(workers <-chan struct{}, wg *sync.WaitGroup, r Request, results chan<- Result, method string) {
 	defer wg.Done()
 
-	factors := []uint64{}
+	var factors []uint64
 	start := time.Now()
 	switch method {
 	case "naive":
 		factors = factorsNaive(r.Number)
 	case "disk":
 		factors = factorsDisk(r.Number, "primes.bin")
+	default:
+		log.Fatalf("unknown method: %s", method)
 	}
 	results <- Result{r.Id, time.Since(start), r.Number, factors}
 	<-workers
 }
 
 func gen(cxt context.Context, wg *sync.WaitGroup, c chan<- Request, shift int) {
+	defer wg.Done()
+	defer close(c)
+
 	i := uint(0)
 	for {
 		r := Request{Id: i, Number: rand.Uint64() >> shift}
@@ -201,8 +207,6 @@ func gen(cxt context.Context, wg *sync.WaitGroup, c chan<- Request, shift int) {
 		case c <- r:
 			i++
 		case <-cxt.Done():
-			close(c)
-			wg.Done()
 			return
 		}
 	}
@@ -223,7 +227,9 @@ func Manage(timeout time.Duration, shift int, method string) {
 	size := runtime.GOMAXPROCS(0)
 	requests := make(chan Request)
 	results := make(chan Result)
+	defer close(results)
 	workers := make(chan struct{}, size)
+	defer close(workers)
 
 	cxt := context.Background()
 	cxt, cancel := context.WithTimeout(cxt, timeout)
@@ -240,5 +246,4 @@ func Manage(timeout time.Duration, shift int, method string) {
 		go do(workers, &wg, r, results, method)
 	}
 	wg.Wait()
-	close(results)
 }

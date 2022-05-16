@@ -37,7 +37,7 @@ func TestDo(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	workers <- struct{}{}
-	go do(workers, &wg, Request{Id: 0, Number: 2}, results, filepath.Join("..", "primes.bin"))
+	go do(workers, &wg, Request{Id: 0, Number: 2}, results, "naive")
 	<-results
 	wg.Wait()
 	assert.True(t, true)
