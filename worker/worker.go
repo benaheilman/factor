@@ -15,11 +15,13 @@ import (
 	"time"
 )
 
+// Message to factor a number into primes
 type Request struct {
 	Id     uint
 	Number uint64
 }
 
+// Message sent after factoring a number
 type Result struct {
 	Id      uint
 	Time    time.Duration
@@ -27,7 +29,8 @@ type Result struct {
 	Factors []uint64
 }
 
-type primeReader struct {
+// Context used to read/cache primes stored on disk
+type cacheReader struct {
 	File        *os.File
 	ObjectSize  int
 	BlockSize   int
@@ -48,10 +51,10 @@ func newPrimeReader(path string, blockSize int) io.Reader {
 	if n != blockSize {
 		log.Fatalf("Only got %d bytes at head of primes file, expected %d", n, blockSize)
 	}
-	return &primeReader{File: file, ObjectSize: 8, BlockSize: blockSize, Cache: cache, CacheOffset: 0}
+	return &cacheReader{File: file, ObjectSize: 8, BlockSize: blockSize, Cache: cache, CacheOffset: 0}
 }
 
-func (pr *primeReader) Read(p []byte) (n int, err error) {
+func (pr *cacheReader) Read(p []byte) (n int, err error) {
 	if pr.CacheOffset >= pr.BlockSize {
 		n, err := pr.File.Read(pr.Cache)
 		switch err {
@@ -84,10 +87,23 @@ func factorsNaive(n uint64) []uint64 {
 }
 
 func factorsDisk(n uint64, path string) []uint64 {
-	r := newPrimeReader(path, 1024*1024)
-	var prime uint64 = 0
 	sqrt := uint64(math.Sqrt(float64(n)))
+
+	var h uint64 = 0
+	for i := uint64(2); i < 256*256 && i <= sqrt; i++ {
+		if n%i == 0 {
+			return append([]uint64{i}, factorsDisk(n/i, path)...)
+		}
+		h = i
+	}
+	if h+1 > sqrt {
+		return []uint64{n}
+	}
+
+	r := newPrimeReader(path, 1024*1024)
 	buf := make([]byte, 8)
+
+	var prime uint64 = 0
 	for {
 		i, err := r.Read(buf)
 		if err == io.EOF {
@@ -231,8 +247,7 @@ func Manage(timeout time.Duration, shift int, method string) {
 	workers := make(chan struct{}, size)
 	defer close(workers)
 
-	cxt := context.Background()
-	cxt, cancel := context.WithTimeout(cxt, timeout)
+	cxt, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	wg.Add(1)
